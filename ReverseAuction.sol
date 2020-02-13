@@ -1,10 +1,10 @@
-pragma solidity >=0.4.22 <0.6.0;
+pragma solidity >=0.4.22;
 //pragma solidity 0.5.11;
 contract Bidding{
     struct fog{
         bool exists;
         uint placed_bids;
-        //reputation score
+        uint reputation;
         uint deposit;
     }
     
@@ -26,6 +26,7 @@ contract Bidding{
         uint startTime;
         uint closingTime;
         uint [] metrics;
+        uint minRep;
     }
     
     mapping (address=> bid) public Auctions;
@@ -63,7 +64,7 @@ contract Bidding{
     
     event SupplierRefunded(address supplierAddress, uint amount);
     
-    event AuctionStarted(uint closingTime,uint startPrice);
+    event AuctionStarted(uint closingTime,uint startPrice, uint MinRep);
 
     event AuctionClosed(uint closingTime, address clientAddress, address lowestBidder, uint lowestBid);
     
@@ -94,7 +95,7 @@ contract Bidding{
         require(!clients[supplier].exists,
         "Address registerd as a client"
         );
-        fog_suppliers[supplier]=(fog(true,0,0));
+        fog_suppliers[supplier]=(fog(true,0,0,0));
         totalBidders++;
         emit BidderRegistered(supplier);
     }
@@ -104,7 +105,7 @@ contract Bidding{
         "Fog node has placed a pending bid"
         );
         refundSupplierDeposit();
-        fog_suppliers[msg.sender]=(fog(false,0,0));
+        fog_suppliers[msg.sender]=(fog(false,0,0,0));
         totalBidders--;
         emit BidderAbandoned(msg.sender);
     }
@@ -122,16 +123,16 @@ contract Bidding{
         return fog_suppliers[msg.sender].deposit;
     }
     
-    function startAuction(uint closingTime,uint startPrice, uint[] memory metrics) payable onlyClient public{
+    function startAuction(uint closingTime,uint startPrice, uint[] memory metrics,uint minRep) payable onlyClient public{
         require(!Auctions[msg.sender].open,
         "Auction already open"
         );
         require(closingTime>now,
         "Closing time cannot be in the past"
         );
-        /*require(totalBidders>2,
+        require(totalBidders>2,
         "More bidders required"
-        );*/
+        );
         require(msg.value>=2*startPrice || getClientDeposit()>=2*startPrice,
         "Deposit Insufficient"
         );
@@ -139,8 +140,8 @@ contract Bidding{
         "Priority Vector Error"
         );*/
         clients[msg.sender].deposit=msg.value;
-        Auctions[msg.sender]=bid(true,startPrice,address(0),now,closingTime,metrics);
-        emit AuctionStarted(closingTime,startPrice);
+        Auctions[msg.sender]=bid(true,startPrice,address(0),now,closingTime,metrics,minRep);
+        emit AuctionStarted(closingTime,startPrice,minRep);
 
     }
 
@@ -186,6 +187,9 @@ contract Bidding{
         );
         require(msg.value==rate,
         "Insufficient Deposit"
+        );
+        require(fog_suppliers[msg.sender].reputation>=Auctions[msg.sender].minRep,
+        "Minimum Reputation requirement not met"
         );
         fog_suppliers[getLowestBidder(buyer)].deposit-=getLowestBid(buyer);
         fog_suppliers[getLowestBidder(buyer)].placed_bids--;
